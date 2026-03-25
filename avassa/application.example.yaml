@@ -1,6 +1,7 @@
 # Illustrative Avassa application skeleton — NOT validated against a live site.
 # Adapt names, images, GPU labels, volumes, ingress, and outbound rules to your tenant.
-# Reference: https://docs.avassa.io/how-to/applications
+# Application spec reference: https://docs.avassa.io/how-to/applications
+# After registering the app, define *where* it runs: https://docs.avassa.io/how-to/deploying-applications
 
 name: edge-agent-demo
 version: "0.1.0"

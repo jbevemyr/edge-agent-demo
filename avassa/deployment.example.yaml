@@ -1,0 +1,53 @@
+# Illustrative application *deployment* objects (separate from the application spec).
+# supctl usually expects one YAML document per create — pick one stanza below or split on `---`.
+# Create with: supctl create application-deployments (see Avassa CLI docs for stdin vs file).
+# Docs: https://docs.avassa.io/how-to/deploying-applications
+#
+# The `application` name must match your registered application (e.g. edge-agent-demo
+# from application.example.yaml). Adjust site labels and rollout options for your tenant.
+
+---
+# Deploy only to one named site (built-in label system/name).
+name: edge-agent-demo-deployment-single-site
+application: edge-agent-demo
+placement:
+  match-site-labels: >
+    system/name = stockholm-sergel
+
+---
+# Deploy to every edge site.
+name: edge-agent-demo-deployment-all-edge
+application: edge-agent-demo
+placement:
+  match-site-labels: >
+    system/type = edge
+
+---
+# Rolling rollout: two sites at a time, wait 10m healthy between batches.
+# Monitor: supctl show application-deployments edge-agent-demo-deployment-rolling
+name: edge-agent-demo-deployment-rolling
+application: edge-agent-demo
+placement:
+  match-site-labels: >
+    system/type = edge
+deploy-to-sites:
+  sites-in-parallel: 2
+  healthy-time: 10m
+
+---
+# Canary: Stockholm-labelled sites first; after 15m healthy, roll the rest (4 sites / batch, 5m between).
+name: edge-agent-demo-deployment-canary
+application: edge-agent-demo
+placement:
+  match-site-labels: >
+    system/type = edge
+deploy-to-sites:
+  canary-sites:
+    match-site-labels:
+      city = stockholm
+  canary-healthy-time: 15m
+  sites-in-parallel: 4
+  healthy-time: 5m
+
+# When new sites match placement, deploy there with:
+#   supctl do application-deployments <deployment-name> redeploy

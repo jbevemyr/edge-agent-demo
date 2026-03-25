@@ -66,6 +66,19 @@ Avassa applications are described in YAML: services, container images, `env`, vo
 
 An **illustrative** (non-validated) skeleton lives in [`avassa/application.example.yaml`](avassa/application.example.yaml). Replace registry paths, version, hostnames, GPU labels, and network rules to match your tenant and site.
 
+### Deploying to edge sites
+
+Registering the **application** YAML is only half the story: you create an **application deployment** to decide *which sites* run it and how rollouts behave. See **[Application Deployment | Avassa Docs](https://docs.avassa.io/how-to/deploying-applications)**.
+
+| Topic | What to use |
+|--------|-------------|
+| **Placement** | Match sites with labels — e.g. a single site via built-in [`system/name`](https://docs.avassa.io/how-to/deploying-applications#placing-applications-based-on-labels), or all edge sites with `system/type = edge`, or your own labels (matches are case-sensitive). |
+| **Rolling deploy** | [`deploy-to-sites`](https://docs.avassa.io/how-to/deploying-applications#rolling-deployments) with `sites-in-parallel` and `healthy-time` so not every site updates at once; check status with `supctl show application-deployments <name>`. |
+| **Canary** | [`canary-sites`](https://docs.avassa.io/how-to/deploying-applications#canary-deployments) + `canary-healthy-time`, then widen with parallel batches — useful before hitting every GPU edge node. |
+| **New sites** | When a new site matches the deployment’s placement expression, run [`supctl do application-deployments <name> redeploy`](https://docs.avassa.io/how-to/deploying-applications#adding-sites-to-a-deployment) to extend the rollout. |
+
+Example deployment manifests (multiple documents in one file) are in [`avassa/deployment.example.yaml`](avassa/deployment.example.yaml). Feed them to `supctl create application-deployments` as your CLI workflow expects (stdin or file).
+
 ## Environment variables
 
 ### `.env` in the repo root (used by Compose)
