@@ -7,7 +7,7 @@ name: edge-agent-demo
 version: "0.1.0"
 
 services:
-  # Mock business API (FastAPI). No GPU.
+  # Warehouse Operations API (FastAPI, synthetic data). No GPU.
   - name: app
     mode: replicated
     replicas: 1
@@ -50,7 +50,7 @@ services:
         ephemeral-volume:
           size: 20GB
 
-  # Orchestration agent + UI. Reaches app and local-llm on the application network.
+  # Edge orchestration agent + UI (warehouse tools + optional cloud LLM).
   - name: agent
     mode: replicated
     replicas: 1

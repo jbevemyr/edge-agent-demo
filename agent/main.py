@@ -22,40 +22,56 @@ CLOUD_MODEL = os.environ.get("CLOUD_MODEL", "gpt-4o-mini")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "").strip()
 MAX_TOOL_ROUNDS = int(os.environ.get("MAX_TOOL_ROUNDS", "12"))
 
-SYSTEM_PROMPT = """You are a demo assistant for an internal support system.
-You have tools to read application data and to escalate hard tasks to a stronger cloud model.
+SYSTEM_PROMPT = """You are an edge warehouse operations assistant. The warehouse operations API holds inventory,
+operational events (including synthetic vision-style alerts), and shipment cutoffs.
+
+Use tools to fetch real data before answering. For long business impact analysis, executive-style summaries,
+or multi-step reasoning across many facts, call ask_cloud_llm with a clear task and compact context from tools.
 
 Rules:
-- Prefer answering with tools: get_app_status, search_records, trigger_action when the user needs data or actions.
-- Use ask_cloud_llm when the user needs long reasoning, nuanced writing, legal/medical style analysis, or you are unsure.
-- After tool results, give a concise final answer to the user in the same language they used.
-- When summarizing many records, you may call ask_cloud_llm with task and context built from tool outputs."""
+- Prefer get_warehouse_summary, query_events, query_inventory, get_warehouse_detail, acknowledge_event when the user needs data or to acknowledge an event.
+- Use ask_cloud_llm for revenue/shipping impact narratives, detailed mitigation plans, or when the user explicitly wants the "core" or cloud model.
+- After tool results, answer concisely in the same language the user used."""
 
 TOOLS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
-            "name": "get_app_status",
-            "description": "Get demo application health: case counts and recent actions.",
+            "name": "get_warehouse_summary",
+            "description": "Aggregated warehouse ops snapshot: open events by severity, SKUs below reorder, pending shipments, next cutoffs.",
             "parameters": {"type": "object", "properties": {}, "additionalProperties": False},
         },
     },
     {
         "type": "function",
         "function": {
-            "name": "search_records",
-            "description": "Search mock customer cases by optional text query and/or status filter.",
+            "name": "query_events",
+            "description": "List operational events (stockout_risk, low_stock, safety_hold) with optional filters.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "query": {
+                    "severity": {
                         "type": "string",
-                        "description": "Optional substring for title, customer, or case id.",
+                        "enum": ["critical", "warning", "info"],
+                        "description": "Optional severity filter.",
+                    },
+                    "event_type": {
+                        "type": "string",
+                        "enum": ["stockout_risk", "low_stock", "safety_hold"],
+                        "description": "Optional event type filter.",
+                    },
+                    "warehouse_id": {
+                        "type": "string",
+                        "description": "Optional warehouse id e.g. WH-EU-01.",
                     },
                     "status": {
                         "type": "string",
-                        "enum": ["open", "overdue", "closed"],
+                        "enum": ["open", "acknowledged"],
                         "description": "Optional status filter.",
+                    },
+                    "query": {
+                        "type": "string",
+                        "description": "Optional text search in title, event id, or sku.",
                     },
                 },
                 "additionalProperties": False,
@@ -65,17 +81,62 @@ TOOLS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
-            "name": "trigger_action",
-            "description": "Trigger a demo workflow action by id (e.g. notify-team, run-check).",
+            "name": "query_inventory",
+            "description": "Query inventory lines by warehouse, sku, below reorder, or text search.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "action_id": {
+                    "warehouse_id": {"type": "string", "description": "Optional warehouse id."},
+                    "sku": {"type": "string", "description": "Exact SKU if known."},
+                    "below_reorder": {
+                        "type": "boolean",
+                        "description": "If true, only lines under reorder point.",
+                    },
+                    "query": {
                         "type": "string",
-                        "description": "Action identifier.",
+                        "description": "Substring match on sku or description.",
+                    },
+                },
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_warehouse_detail",
+            "description": "Detail for one warehouse: metadata, open events, pending shipments, reorder counts.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "warehouse_id": {
+                        "type": "string",
+                        "description": "Warehouse id e.g. WH-EU-01.",
                     }
                 },
-                "required": ["action_id"],
+                "required": ["warehouse_id"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "acknowledge_event",
+            "description": "Mark an operational event as acknowledged (operator workflow).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "event_id": {
+                        "type": "string",
+                        "description": "Event id e.g. EV-2041.",
+                    },
+                    "note": {
+                        "type": "string",
+                        "description": "Optional operator note.",
+                    },
+                },
+                "required": ["event_id"],
                 "additionalProperties": False,
             },
         },
@@ -84,7 +145,7 @@ TOOLS: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "ask_cloud_llm",
-            "description": "Escalate a harder task to a larger cloud model. Pass structured context from prior tools.",
+            "description": "Escalate a harder task to a larger cloud model (stand-in for core data-center analysis). Pass structured context from prior tools.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -104,7 +165,7 @@ TOOLS: list[dict[str, Any]] = [
     },
 ]
 
-app = FastAPI(title="Demo Agent", version="0.1.0")
+app = FastAPI(title="Warehouse Edge Agent", version="0.2.0")
 
 
 def _local_client() -> OpenAI:
@@ -140,20 +201,46 @@ async def execute_tool(name: str, arguments: str) -> str:
         return json.dumps({"error": "invalid_json_arguments", "raw": arguments[:500]})
 
     try:
-        if name == "get_app_status":
-            data = await _http_get("/status")
+        if name == "get_warehouse_summary":
+            data = await _http_get("/v1/operations/summary")
             return json.dumps(data, ensure_ascii=False)
-        if name == "search_records":
+        if name == "query_events":
             params = {}
-            if args.get("query"):
-                params["query"] = args["query"]
+            if args.get("severity"):
+                params["severity"] = args["severity"]
+            if args.get("event_type"):
+                params["type"] = args["event_type"]
+            if args.get("warehouse_id"):
+                params["warehouse_id"] = args["warehouse_id"]
             if args.get("status"):
                 params["status"] = args["status"]
-            data = await _http_get("/search", params=params)
+            if args.get("query"):
+                params["query"] = args["query"]
+            data = await _http_get("/v1/events", params=params)
             return json.dumps(data, ensure_ascii=False)
-        if name == "trigger_action":
-            aid = args.get("action_id", "")
-            data = await _http_post("/action", {"action_id": aid})
+        if name == "query_inventory":
+            params = {}
+            if args.get("warehouse_id"):
+                params["warehouse_id"] = args["warehouse_id"]
+            if args.get("sku"):
+                params["sku"] = args["sku"]
+            if args.get("below_reorder") is True:
+                params["below_reorder"] = "true"
+            if args.get("query"):
+                params["query"] = args["query"]
+            data = await _http_get("/v1/inventory", params=params)
+            return json.dumps(data, ensure_ascii=False)
+        if name == "get_warehouse_detail":
+            wid = args.get("warehouse_id", "")
+            data = await _http_get(f"/v1/warehouses/{wid}")
+            return json.dumps(data, ensure_ascii=False)
+        if name == "acknowledge_event":
+            eid = args.get("event_id", "")
+            note = args.get("note")
+            body: dict[str, Any] = {}
+            if note is not None:
+                body["note"] = note
+            data = await _http_post(f"/v1/events/{eid}/acknowledge", body)
             return json.dumps(data, ensure_ascii=False)
         if name == "ask_cloud_llm":
             cloud = _cloud_client()
