@@ -1,0 +1,82 @@
+name: Build and push container images
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Image tag (t.ex. v0.1.0) — används bara vid manuell körning"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  PLATFORMS: linux/amd64
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: app
+            context: ./app
+            file: ./app/Dockerfile
+          - id: agent
+            context: ./agent
+            file: ./agent/Dockerfile
+          - id: local-llm
+            context: ./local-llm
+            file: ./local-llm/Dockerfile
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Image tag
+        id: meta
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ inputs.version }}"
+          else
+            TAG="${GITHUB_REF#refs/tags/}"
+          fi
+          if [ -z "$TAG" ]; then
+            echo "Missing version tag"
+            exit 1
+          fi
+          echo "version=$TAG" >> "$GITHUB_OUTPUT"
+          BASE="ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')"
+          echo "registry_base=$BASE" >> "$GITHUB_OUTPUT"
+          echo "Will publish ${BASE}/${{ matrix.id }}:$TAG"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push ${{ matrix.id }}
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          push: true
+          platforms: ${{ env.PLATFORMS }}
+          tags: |
+            ${{ steps.meta.outputs.registry_base }}/${{ matrix.id }}:${{ steps.meta.outputs.version }}
+          labels: |
+            org.opencontainers.image.title=${{ matrix.id }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.version=${{ steps.meta.outputs.version }}
