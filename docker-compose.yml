@@ -1,6 +1,6 @@
-# Tre tjänster: app (affärslogik), agent (orkestrering + verktyg), local-llm (vLLM OpenAI-kompatibel).
-# Krav: NVIDIA GPU + nvidia-container-toolkit för local-llm (vLLM).
-# Första starten laddar modellen — kan ta flera minuter.
+# Three services: app (business API), agent (orchestration + tools), local-llm (OpenAI-compatible vLLM).
+# Requires NVIDIA GPU + NVIDIA Container Toolkit for local-llm.
+# First start downloads the model — can take several minutes.
 
 services:
   app:
@@ -55,7 +55,7 @@ services:
       APP_URL: http://app:8001
       LOCAL_LLM_BASE: http://local-llm:8000/v1
       LOCAL_MODEL: Qwen/Qwen2.5-0.5B-Instruct
-      # Valfritt: sätt i .env i projektroten för moln-escalation (ask_cloud_llm)
+      # Optional: set in root .env for cloud escalation (ask_cloud_llm)
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       CLOUD_MODEL: ${CLOUD_MODEL:-gpt-4o-mini}
     depends_on:

@@ -1,5 +1,5 @@
-# Körning mot färdigbyggda images från GHCR (samma tag för alla tre).
-# Exempel:
+# Run pre-built images from GHCR (same tag for all three).
+# Example:
 #   export REGISTRY=ghcr.io/jbevemyr/edge-agent-demo
 #   export VERSION=v0.1.0
 #   docker compose -f docker-compose.release.yml pull

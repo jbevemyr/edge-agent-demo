@@ -1,0 +1,74 @@
+# Illustrative Avassa application skeleton — NOT validated against a live site.
+# Adapt names, images, GPU labels, volumes, ingress, and outbound rules to your tenant.
+# Reference: https://docs.avassa.io/how-to/applications
+
+name: edge-agent-demo
+version: "0.1.0"
+
+services:
+  # Mock business API (FastAPI). No GPU.
+  - name: app
+    mode: replicated
+    replicas: 1
+    containers:
+      - name: app
+        image: "ghcr.io/jbevemyr/edge-agent-demo/app:v0.1.0"
+        # Optional: expose app docs / debugging on the site network
+        # network:
+        #   ingress-ip-per-instance:
+        #     protocols:
+        #       - name: tcp
+        #         port-ranges: "8001"
+
+  # vLLM — requires GPU passthrough on the host.
+  # See: https://docs.avassa.io/how-to/applications#request-gpu-passthrough
+  - name: local-llm
+    mode: replicated
+    replicas: 1
+    containers:
+      - name: vllm
+        image: "ghcr.io/jbevemyr/edge-agent-demo/local-llm:v0.1.0"
+        gpu:
+          labels:
+            - all
+          number-gpus: 1
+        cmd:
+          - "--model"
+          - "Qwen/Qwen2.5-0.5B-Instruct"
+          - "--max-model-len"
+          - "4096"
+          - "--dtype"
+          - "auto"
+        env:
+          HF_HUB_ENABLE_HF_TRANSFER: "1"
+        mounts:
+          - volume-name: hf-cache
+            mount-path: /root/.cache/huggingface
+    volumes:
+      - name: hf-cache
+        ephemeral-volume:
+          size: 20GB
+
+  # Orchestration agent + UI. Reaches app and local-llm on the application network.
+  - name: agent
+    mode: replicated
+    replicas: 1
+    containers:
+      - name: agent
+        image: "ghcr.io/jbevemyr/edge-agent-demo/agent:v0.1.0"
+        env:
+          # Replace hostnames with the names your platform uses for service discovery.
+          APP_URL: "http://app:8001"
+          LOCAL_LLM_BASE: "http://local-llm:8000/v1"
+          LOCAL_MODEL: "Qwen/Qwen2.5-0.5B-Instruct"
+          # Prefer Strongbox / vault references instead of inline secrets in production.
+          # OPENAI_API_KEY: ${OPENAI_API_KEY}
+          CLOUD_MODEL: "gpt-4o-mini"
+        network:
+          ingress-ip-per-instance:
+            protocols:
+              - name: tcp
+                port-ranges: "8002"
+          # Uncomment if the agent should call OpenAI (ask_cloud_llm / fallback):
+          # outbound-access:
+          #   allow-all: true

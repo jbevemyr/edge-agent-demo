@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="sv">
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Demo – agent + app + lokal LLM</title>
+  <title>Demo — agent + app + local LLM</title>
   <style>
     :root {
       --bg: #0f1419;
@@ -74,11 +74,11 @@
 </head>
 <body>
   <main>
-    <h1>Agentdemo</h1>
-    <p class="sub">Fråga agenten (lokal modell + verktyg mot appen, valfri moln-LLM via <code>ask_cloud_llm</code>).</p>
-    <label for="q">Meddelande</label>
-    <textarea id="q" placeholder="T.ex. Lista försenade ärenden och gör en kort sammanfattning."></textarea>
-    <button type="button" id="send">Skicka</button>
+    <h1>Agent demo</h1>
+    <p class="sub">Ask the agent (local model + tools to the app; optional cloud LLM via <code>ask_cloud_llm</code>).</p>
+    <label for="q">Message</label>
+    <textarea id="q" placeholder="e.g. List overdue cases and give a short summary."></textarea>
+    <button type="button" id="send">Send</button>
     <div class="out" id="reply" aria-live="polite"></div>
     <div class="audit" id="audit" hidden></div>
   </main>

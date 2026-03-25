@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Image tag (t.ex. v0.1.0) — används bara vid manuell körning"
+        description: "Image tag (e.g. v0.1.0) — used only for manual workflow runs"
         required: true
         type: string
 

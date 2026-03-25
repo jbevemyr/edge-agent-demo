@@ -1,3 +1,3 @@
-# Tunn wrapper kring officiell vLLM-image så CI kan tagga och pusha samma versionslabel som app/agent.
+# Thin wrapper around the official vLLM image so CI can tag/push the same version label as app/agent.
 ARG VLLM_IMAGE=vllm/vllm-openai:latest
 FROM ${VLLM_IMAGE}
