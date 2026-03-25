@@ -1,4 +1,4 @@
-"""Mock warehouse operations API — reference demo aligned with edge IT/OT warehouse narratives.
+"""Mock warehouse operations API - reference demo aligned with edge IT/OT warehouse narratives.
 
 Not affiliated with Cisco products; synthetic data only.
 """

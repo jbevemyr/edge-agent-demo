@@ -1,10 +1,12 @@
 # Edge agent demo
 
+All documentation, API descriptions, and UI copy in this repository are **English only**.
+
 Three containers that show how a **local LLM** (vLLM) can orchestrate **tool calls** against a **warehouse operations API**, and optionally escalate to a **cloud LLM** when the model invokes the `ask_cloud_llm` tool (a stand-in for heavier **core** analysis, similar to the edge/core split described in Cisco's Secure AI Factory narrative).
 
 **Disclaimer:** This repository is an independent reference demo. It is **not** an official Cisco product, does not integrate Vaidio, Aible, Cisco AI Defense, or Intersight, and uses **synthetic** inventory and events only.
 
-**Story alignment:** The mock app models **edge warehouse operations**—inventory, shipment cutoffs, and operational events including **synthetic vision-style** alerts—evoking the [intelligent warehouse / multi-agent edge](https://blogs.cisco.com/datacenter/cisco-gives-its-secure-ai-factory-with-nvidia-a-secure-multi-agent-edge-up?ccid=cc006075) themes from Cisco's blog (March 2026).
+**Story alignment:** The mock app models **edge warehouse operations**: inventory, shipment cutoffs, and operational events including **synthetic vision-style** alerts. That mirrors the [intelligent warehouse / multi-agent edge](https://blogs.cisco.com/datacenter/cisco-gives-its-secure-ai-factory-with-nvidia-a-secure-multi-agent-edge-up?ccid=cc006075) themes from Cisco's blog (March 2026).
 
 | Service | Role | Default port |
 |---------|------|--------------|
@@ -12,7 +14,7 @@ Three containers that show how a **local LLM** (vLLM) can orchestrate **tool cal
 | **agent** | Chat API, tool loop, calls app + local/cloud models | 8002 |
 | **local-llm** | vLLM with an OpenAI-compatible HTTP API | 8000 |
 
-**Flow:** the user sends a message to the agent → the local model may call tools (`get_warehouse_summary`, `query_events`, `query_inventory`, `get_warehouse_detail`, `acknowledge_event`, `ask_cloud_llm`) → the agent executes them → the final reply is returned. A small web UI is served at the agent root URL.
+**Flow:** The user sends a message to the agent. The local model may call tools (`get_warehouse_summary`, `query_events`, `query_inventory`, `get_warehouse_detail`, `acknowledge_event`, `ask_cloud_llm`). The agent executes those tools and returns the final reply. A small web UI is served at the agent root URL.
 
 ## Requirements
 
@@ -24,8 +26,8 @@ Optional: `curl` and `jq` for formatted JSON from `scripts/demo.sh`.
 
 ## Run on Avassa
 
-1. **Application spec** — **[Applications | Avassa Docs](https://docs.avassa.io/how-to/applications)**. Start from [`avassa/application.example.yaml`](avassa/application.example.yaml).
-2. **Deployment** — **[Application Deployment | Avassa Docs](https://docs.avassa.io/how-to/deploying-applications)** and [`avassa/deployment.example.yaml`](avassa/deployment.example.yaml).
+1. **Application spec:** see **[Applications | Avassa Docs](https://docs.avassa.io/how-to/applications)**. Start from [`avassa/application.example.yaml`](avassa/application.example.yaml).
+2. **Deployment:** see **[Application Deployment | Avassa Docs](https://docs.avassa.io/how-to/deploying-applications)** and [`avassa/deployment.example.yaml`](avassa/deployment.example.yaml).
 
 **Mapping this demo to Avassa:**
 
@@ -49,7 +51,7 @@ Optional: `curl` and `jq` for formatted JSON from `scripts/demo.sh`.
 | **Canary** | [Canary deployments](https://docs.avassa.io/how-to/deploying-applications#canary-deployments) |
 | **New sites** | [Redeploy](https://docs.avassa.io/how-to/deploying-applications#adding-sites-to-a-deployment) |
 
-## Container images (CI → GHCR)
+## Container images (CI to GHCR)
 
 Tag `v*` builds:
 
@@ -59,7 +61,7 @@ Tag `v*` builds:
 
 ## Environment variables
 
-Set on containers in the Avassa spec (or vault → `env`).
+Set on containers in the Avassa spec (or map from vault into `env`).
 
 ### Agent
 
@@ -85,12 +87,12 @@ See [`.env.example`](.env.example) for a short checklist.
 
 Base path **`/v1/...`** (OpenAPI at `/docs` when the service is exposed).
 
-- `GET /health` — liveness  
-- `GET /v1/operations/summary` — open events by severity, SKUs below reorder, pending shipments, next cutoffs  
-- `GET /v1/events` — query params: `severity`, `type`, `warehouse_id`, `status`, `query`  
-- `GET /v1/inventory` — `warehouse_id`, `sku`, `below_reorder`, `query`  
-- `GET /v1/warehouses/{warehouse_id}` — site detail, open events, shipments  
-- `POST /v1/events/{event_id}/acknowledge` — optional JSON `{"note":"..."}`  
+- `GET /health`: liveness  
+- `GET /v1/operations/summary`: open events by severity, SKUs below reorder, pending shipments, next cutoffs  
+- `GET /v1/events`: query params `severity`, `type`, `warehouse_id`, `status`, `query`  
+- `GET /v1/inventory`: query params `warehouse_id`, `sku`, `below_reorder`, `query`  
+- `GET /v1/warehouses/{warehouse_id}`: site detail, open events, shipments  
+- `POST /v1/events/{event_id}/acknowledge`: optional JSON body `{"note":"..."}`  
 
 Data is **in-memory** synthetic seed data for demonstration.
 
@@ -113,7 +115,7 @@ AGENT_URL=http://<agent-host>:8002 \
 
 1. **Edge vs core:** Local SLM + tools at the edge; `ask_cloud_llm` illustrates when **core-scale** reasoning might run (no real data lake here).  
 2. **IT/OT bridge:** Synthetic **vision-sourced** events (`source: synthetic_vision`) feeding the same REST API an agent would call.  
-3. **Operational loop:** Summary → query critical events → optional **acknowledge** (operator action).  
+3. **Operational loop:** Summary, then query critical events, then optional **acknowledge** (operator action).  
 4. **Security posture:** Mention **Cisco AI Defense** and runtime guardrails from the [blog](https://blogs.cisco.com/datacenter/cisco-gives-its-secure-ai-factory-with-nvidia-a-secure-multi-agent-edge-up?ccid=cc006075) as the **production** target; this repo stays a minimal agent + API slice.  
 5. **Deployment:** Same three images on **Avassa** edge nodes with GPU for vLLM.
 

@@ -1,5 +1,5 @@
 # Illustrative application *deployment* objects (separate from the application spec).
-# supctl usually expects one YAML document per create — pick one stanza below or split on `---`.
+# supctl usually expects one YAML document per create - pick one stanza below or split on `---`.
 # Create with: supctl create application-deployments (see Avassa CLI docs for stdin vs file).
 # Docs: https://docs.avassa.io/how-to/deploying-applications
 #

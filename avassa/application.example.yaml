@@ -1,4 +1,4 @@
-# Illustrative Avassa application skeleton — NOT validated against a live site.
+# Illustrative Avassa application skeleton - NOT validated against a live site.
 # Adapt names, images, GPU labels, volumes, ingress, and outbound rules to your tenant.
 # Application spec reference: https://docs.avassa.io/how-to/applications
 # After registering the app, define *where* it runs: https://docs.avassa.io/how-to/deploying-applications
@@ -21,7 +21,7 @@ services:
         #       - name: tcp
         #         port-ranges: "8001"
 
-  # vLLM — requires GPU passthrough on the host.
+  # vLLM - requires GPU passthrough on the host.
   # See: https://docs.avassa.io/how-to/applications#request-gpu-passthrough
   - name: local-llm
     mode: replicated
