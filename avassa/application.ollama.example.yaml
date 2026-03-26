@@ -1,0 +1,43 @@
+# Two services from this repo (app + agent) when Ollama already runs on the site.
+# Ollama must expose its OpenAI-compatible API (default port 11434, path /v1).
+# Docs: https://github.com/ollama/ollama/blob/main/docs/openai.md
+#
+# Replace OLLAMA_HOST below with the hostname your platform uses so the agent can reach Ollama
+# (same Avassa application network, another application on the site, or site DNS).
+#
+# Pull a model on that Ollama instance before demoing, e.g. ollama pull llama3.2
+# Use a model that supports tool calling well enough for your hardware.
+
+name: edge-agent-demo-ollama
+version: "0.1.0"
+
+services:
+  - name: app
+    mode: replicated
+    replicas: 1
+    containers:
+      - name: app
+        image: "ghcr.io/jbevemyr/edge-agent-demo/app:v0.2.0"
+
+  - name: agent
+    mode: replicated
+    replicas: 1
+    containers:
+      - name: agent
+        image: "ghcr.io/jbevemyr/edge-agent-demo/agent:v0.2.0"
+        env:
+          APP_URL: "http://app:8001"
+          # Example: Ollama reachable as service name "ollama" on the same application network
+          LOCAL_LLM_BASE: "http://ollama:11434/v1"
+          LOCAL_MODEL: "llama3.2"
+          LOCAL_LLM_API_KEY: "ollama"
+          CLOUD_MODEL: "gpt-4o-mini"
+          # OPENAI_API_KEY: (optional, for ask_cloud_llm)
+        network:
+          ingress-ip-per-instance:
+            protocols:
+              - name: tcp
+                port-ranges: "8002"
+          # If Ollama is outside this application, allow outbound to its host:port
+          # outbound-access:
+          #   allow-all: true

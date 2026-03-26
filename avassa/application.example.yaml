@@ -1,4 +1,5 @@
 # Illustrative Avassa application skeleton - NOT validated against a live site.
+# If you use Ollama on the site instead of the local-llm (vLLM) service, see application.ollama.example.yaml.
 # Adapt names, images, GPU labels, volumes, ingress, and outbound rules to your tenant.
 # Application spec reference: https://docs.avassa.io/how-to/applications
 # After registering the app, define *where* it runs: https://docs.avassa.io/how-to/deploying-applications

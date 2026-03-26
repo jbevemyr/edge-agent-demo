@@ -1,6 +1,6 @@
 # Edge agent demo
 
-Three containers that show how a **local LLM** (vLLM) can orchestrate **tool calls** against a **warehouse operations API**, and optionally escalate to a **cloud LLM** when the model invokes the `ask_cloud_llm` tool (a stand-in for heavier **core** analysis, similar to the edge/core split described in Cisco's Secure AI Factory narrative).
+Three containers that show how a **local LLM** (typically **vLLM** in CI, or **Ollama** on your site) can orchestrate **tool calls** against a **warehouse operations API**, and optionally escalate to a **cloud LLM** when the model invokes the `ask_cloud_llm` tool (a stand-in for heavier **core** analysis, similar to the edge/core split described in Cisco's Secure AI Factory narrative).
 
 **Disclaimer:** This repository is an independent reference demo. It is **not** an official Cisco product, does not integrate Vaidio, Aible, Cisco AI Defense, or Intersight, and uses **synthetic** inventory and events only.
 
@@ -10,7 +10,7 @@ Three containers that show how a **local LLM** (vLLM) can orchestrate **tool cal
 |---------|------|--------------|
 | **app** | Warehouse Operations API (inventory, events, shipments) | 8001 |
 | **agent** | Chat API, tool loop, calls app + local/cloud models | 8002 |
-| **local-llm** | vLLM with an OpenAI-compatible HTTP API | 8000 |
+| **local-llm** | vLLM (OpenAI-compatible HTTP API). Optional: use **Ollama** on the site instead; see [Using Ollama](#using-ollama-instead-of-the-vllm-container). | 8000 |
 
 **Flow (short):** The user sends a message to the agent. The local model may request **tools**; the agent executes them (HTTP to the app, or cloud for `ask_cloud_llm`) and feeds results back until the model returns a final text reply. A small web UI is served at the agent root URL.
 
@@ -19,8 +19,8 @@ For the full REST surface of the app and how tools map to HTTP, see [Warehouse O
 ## Requirements
 
 - **Container images** from **GHCR**, built by this repo's CI (three images, one shared version tag).
-- **NVIDIA GPU** on hosts running **local-llm**, as configured on your edge platform (on Avassa: [GPU passthrough](https://docs.avassa.io/how-to/applications#request-gpu-passthrough)).
-- Enough **RAM/VRAM**; the first start downloads the model from Hugging Face (can take many minutes).
+- **NVIDIA GPU** on hosts running **local-llm** (vLLM), unless you use **Ollama** elsewhere with its own hardware rules.
+- Enough **RAM/VRAM**; vLLM’s first start downloads the model from Hugging Face (can take many minutes). Ollama uses its own model store (`ollama pull`).
 
 Optional: `curl` and `jq` for formatted JSON from `scripts/demo.sh`.
 
@@ -41,6 +41,22 @@ Optional: `curl` and `jq` for formatted JSON from `scripts/demo.sh`.
 | **Ingress** | TCP **8002** on agent ([ingress](https://docs.avassa.io/how-to/applications#add-ingress-ip-configuration-to-a-service)); optional **8001** for OpenAPI. |
 | **Outbound** | If using `OPENAI_API_KEY`, allow HTTPS to OpenAI ([outbound](https://docs.avassa.io/how-to/applications#allow-unrestricted-outbound-network-access-for-a-service)). |
 | **Secrets** | [Strongbox](https://docs.avassa.io/how-to/applications#add-strongbox-secrets-to-an-application). |
+
+### Using Ollama instead of the vLLM container
+
+If **Ollama** already runs on the site, you do **not** need the **`local-llm`** service from this repo. Deploy only **`app`** + **`agent`** (see [`avassa/application.ollama.example.yaml`](avassa/application.ollama.example.yaml)) and point the agent at Ollama’s [OpenAI-compatible API](https://github.com/ollama/ollama/blob/main/docs/openai.md).
+
+| Setting | Value |
+|---------|--------|
+| `LOCAL_LLM_BASE` | Base URL including **`/v1`**, e.g. `http://ollama:11434/v1` or whatever hostname/port your site uses for Ollama. |
+| `LOCAL_MODEL` | An Ollama **model name** you have pulled on that instance (e.g. `llama3.2`, `qwen2.5`, `mistral`). Must match `ollama list` on the server. |
+| `LOCAL_LLM_API_KEY` | Ollama usually ignores this; any non-empty placeholder (e.g. `ollama`) is fine for the Python OpenAI client. |
+
+**Networking:** The **agent** container must be able to open **HTTP** to Ollama’s API port (default **11434**) on the application or site network. If Ollama is another Avassa application, use the hostname your platform assigns for service discovery.
+
+**Tool calling:** This demo relies on **function / tool** calls. Use an Ollama model that supports tools well enough for your hardware; small models may omit or misuse tools.
+
+**CI images:** You can still build only **`app`** and **`agent`** from GHCR; skip the **`local-llm`** image on sites that use Ollama.
 
 ### Deploying to edge sites
 
@@ -68,8 +84,8 @@ Set on containers in the Avassa spec (or map from vault into `env`).
 | Variable | Typical value | Description |
 |----------|---------------|-------------|
 | `APP_URL` | `http://app:8001` | Warehouse API base URL. |
-| `LOCAL_LLM_BASE` | `http://local-llm:8000/v1` | vLLM OpenAI-compatible base. |
-| `LOCAL_MODEL` | `Qwen/Qwen2.5-0.5B-Instruct` | Must match vLLM startup. |
+| `LOCAL_LLM_BASE` | `http://local-llm:8000/v1` | OpenAI-compatible chat base URL (**vLLM**). For **Ollama**, e.g. `http://ollama:11434/v1`. |
+| `LOCAL_MODEL` | `Qwen/Qwen2.5-0.5B-Instruct` | Model id sent to the API. For vLLM, match the server; for Ollama, use a pulled tag (e.g. `llama3.2`). |
 | `LOCAL_LLM_API_KEY` | `local` | Placeholder for OpenAI client. |
 | `MAX_TOOL_ROUNDS` | `12` | Tool round limit. |
 | `OPENAI_API_KEY` | *(secret)* | Optional; `ask_cloud_llm` + fallback. |
@@ -128,7 +144,7 @@ The **`/chat`** response includes **`reply`** (assistant text) and **`audit`** (
 ./scripts/demo.sh
 ```
 
-Override hosts if needed:
+Override hosts if needed (`LLM_URL` is vLLM port **8000** by default; for **Ollama** use port **11434**):
 
 ```bash
 APP_URL=http://<app-host>:8001 \
@@ -143,10 +159,11 @@ AGENT_URL=http://<agent-host>:8002 \
 2. **IT/OT bridge:** Synthetic **vision-sourced** events (`source: synthetic_vision`) feeding the same REST API an agent would call.  
 3. **Operational loop:** Summary, then query critical events, then optional **acknowledge** (operator action).  
 4. **Security posture:** Mention **Cisco AI Defense** and runtime guardrails from the [blog](https://blogs.cisco.com/datacenter/cisco-gives-its-secure-ai-factory-with-nvidia-a-secure-multi-agent-edge-up?ccid=cc006075) as the **production** target; this repo stays a minimal agent + API slice.  
-5. **Deployment:** Same three images on **Avassa** edge nodes with GPU for vLLM.
+5. **Deployment:** Three images on **Avassa** with GPU for vLLM, or **two** images (**app** + **agent**) if inference is **Ollama** on the site.
 
 ## Troubleshooting
 
-- **Agent not ready:** Wait for vLLM model load.  
-- **GPU:** Confirm **local-llm** has a GPU on the platform.  
-- **Weak tool use:** Use a larger model and match `LOCAL_MODEL` to vLLM.
+- **Agent not ready:** Wait for the local model (vLLM download/load or Ollama ready with the model pulled).  
+- **GPU:** Confirm **local-llm** (vLLM) has a GPU, or size Ollama appropriately on the site.  
+- **Weak tool use:** Use a larger model; set `LOCAL_MODEL` to match the server (vLLM model id or Ollama model name).  
+- **Ollama connection errors:** Check `LOCAL_LLM_BASE` ends with `/v1`, port **11434**, and network path from **agent** to Ollama.
