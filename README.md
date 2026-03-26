@@ -138,6 +138,26 @@ The **agent** ([`agent/main.py`](agent/main.py)) exposes **`POST /chat`** and a 
 
 The **`/chat`** response includes **`reply`** (assistant text) and **`audit`** (tool names and short previews) for demos.
 
+### Optional: OpenClaw as another client
+
+[OpenClaw](https://github.com/openclaw/openclaw) is a separate, model-agnostic assistant framework (Node/TypeScript) that can connect LLMs to many channels and tools. It is **not** bundled or required by this repository.
+
+Two practical ways to combine it with this demo:
+
+1. **Shared inference** - Point both **OpenClaw** and this demo’s **`agent`** at the **same** Ollama (or other OpenAI-compatible) endpoint on the site. You get different UIs/channels while reusing one local model. Plan for **load** if both are active.
+
+2. **HTTP tool to this agent** - If your OpenClaw setup supports calling a custom **HTTP** action or similar, expose the demo **agent** on the network and **`POST /chat`** with JSON `{"message": "<natural language question>"}`. OpenClaw’s model can then delegate warehouse questions to this stack; tool orchestration for the warehouse API still runs **inside** the FastAPI agent ([`agent/main.py`](agent/main.py)).
+
+Example **`curl`** (replace host/port/ingress as on your site):
+
+```bash
+curl -sS "http://<agent-host>:8002/chat" \
+  -H "Content-Type: application/json" \
+  -d '{"message":"Summarize open critical events for WH-EU-01."}'
+```
+
+**Security:** OpenClaw can integrate deeply with the host and messaging platforms. Follow its security guidance, restrict network access to the warehouse **app** and **agent**, and avoid duplicating two unrelated LLM “brains” on the same task without a clear split of roles.
+
 ## Demo script
 
 ```bash
