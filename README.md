@@ -1,7 +1,5 @@
 # Edge agent demo
 
-All documentation, API descriptions, and UI copy in this repository are **English only**.
-
 Three containers that show how a **local LLM** (vLLM) can orchestrate **tool calls** against a **warehouse operations API**, and optionally escalate to a **cloud LLM** when the model invokes the `ask_cloud_llm` tool (a stand-in for heavier **core** analysis, similar to the edge/core split described in Cisco's Secure AI Factory narrative).
 
 **Disclaimer:** This repository is an independent reference demo. It is **not** an official Cisco product, does not integrate Vaidio, Aible, Cisco AI Defense, or Intersight, and uses **synthetic** inventory and events only.
@@ -14,7 +12,9 @@ Three containers that show how a **local LLM** (vLLM) can orchestrate **tool cal
 | **agent** | Chat API, tool loop, calls app + local/cloud models | 8002 |
 | **local-llm** | vLLM with an OpenAI-compatible HTTP API | 8000 |
 
-**Flow:** The user sends a message to the agent. The local model may call tools (`get_warehouse_summary`, `query_events`, `query_inventory`, `get_warehouse_detail`, `acknowledge_event`, `ask_cloud_llm`). The agent executes those tools and returns the final reply. A small web UI is served at the agent root URL.
+**Flow (short):** The user sends a message to the agent. The local model may request **tools**; the agent executes them (HTTP to the app, or cloud for `ask_cloud_llm`) and feeds results back until the model returns a final text reply. A small web UI is served at the agent root URL.
+
+For the full REST surface of the app and how tools map to HTTP, see [Warehouse Operations API and agent integration](#warehouse-operations-api-and-agent-integration).
 
 ## Requirements
 
@@ -83,18 +83,44 @@ See [`.env.example`](.env.example) for a short checklist.
 |----------|-------------|
 | `HF_TOKEN` / `HUGGING_FACE_HUB_TOKEN` | If using a gated Hugging Face model. |
 
-## Warehouse Operations API (app)
+## Warehouse Operations API and agent integration
 
-Base path **`/v1/...`** (OpenAPI at `/docs` when the service is exposed).
+### App service (REST API)
 
-- `GET /health`: liveness  
-- `GET /v1/operations/summary`: open events by severity, SKUs below reorder, pending shipments, next cutoffs  
-- `GET /v1/events`: query params `severity`, `type`, `warehouse_id`, `status`, `query`  
-- `GET /v1/inventory`: query params `warehouse_id`, `sku`, `below_reorder`, `query`  
-- `GET /v1/warehouses/{warehouse_id}`: site detail, open events, shipments  
-- `POST /v1/events/{event_id}/acknowledge`: optional JSON body `{"note":"..."}`  
+The **app** container runs a FastAPI **Warehouse Operations API** ([`app/main.py`](app/main.py)). It holds **in-memory** synthetic data: warehouses, inventory lines, operational events (including rows with `source: synthetic_vision`), and pending shipments. The app **does not** call the agent or any LLM; it is a plain HTTP backend.
 
-Data is **in-memory** synthetic seed data for demonstration.
+Business routes live under **`/v1/...`**. When port **8001** is exposed, interactive docs are at **`/docs`**.
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `GET` | `/health` | Liveness; includes `service: warehouse-ops`. |
+| `GET` | `/v1/operations/summary` | Roll-up: open events by severity, SKUs below reorder, pending shipments, next cutoffs, recent acknowledge actions. |
+| `GET` | `/v1/events` | Query params: `severity`, `type` (event type: `stockout_risk`, `low_stock`, `safety_hold`), `warehouse_id`, `status` (`open` / `acknowledged`), `query` (text in title, event id, sku). Response: `count`, `events`. |
+| `GET` | `/v1/inventory` | Query params: `warehouse_id`, `sku`, `below_reorder` (boolean), `query` (sku or description). Response: `count`, `lines`. |
+| `GET` | `/v1/warehouses/{warehouse_id}` | One warehouse: metadata, counts, **open** events for that site, pending shipments. `404` if the id is unknown. |
+| `POST` | `/v1/events/{event_id}/acknowledge` | Marks the event acknowledged and timestamps it. Optional JSON body: `{"note": "..."}`. Idempotent if already acknowledged. |
+
+### How the agent uses the app
+
+The **agent** ([`agent/main.py`](agent/main.py)) exposes **`POST /chat`** and a small UI on **`/`**. It calls the **local LLM** with OpenAI-style **function tools**. The inference server **does not** call the warehouse app; only the agent does, after the model returns `tool_calls`.
+
+1. The **user** sends natural language to the agent (`/chat` or UI).
+2. The agent forwards the conversation and tool definitions to the **local LLM** (`LOCAL_LLM_BASE`, `LOCAL_MODEL`).
+3. When the model returns **tool calls**, the agent runs **`execute_tool`** in Python and, for warehouse tools, sends **HTTP** requests to **`APP_URL`** (for example `http://app:8001` on the application network) using `httpx`.
+4. Each tool result is returned to the model as a **tool** message. This repeats up to **`MAX_TOOL_ROUNDS`** until the model emits a final assistant message.
+5. **`ask_cloud_llm`** is different: it invokes the **cloud** OpenAI API with `task` and `context`, not the app. It needs **`OPENAI_API_KEY`** (optional in your deployment).
+
+**Tool name to HTTP mapping:**
+
+| Agent tool (for the LLM) | App request |
+|--------------------------|-------------|
+| `get_warehouse_summary` | `GET /v1/operations/summary` |
+| `query_events` | `GET /v1/events` (maps `event_type` to query param `type`) |
+| `query_inventory` | `GET /v1/inventory` (`below_reorder: true` becomes `below_reorder=true`) |
+| `get_warehouse_detail` | `GET /v1/warehouses/{warehouse_id}` |
+| `acknowledge_event` | `POST /v1/events/{event_id}/acknowledge` with optional `{"note": ...}` |
+
+The **`/chat`** response includes **`reply`** (assistant text) and **`audit`** (tool names and short previews) for demos.
 
 ## Demo script
 
