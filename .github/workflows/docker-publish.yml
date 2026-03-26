@@ -16,7 +16,7 @@ permissions:
   packages: write
 
 env:
-  PLATFORMS: linux/amd64
+  PLATFORMS: linux/amd64,linux/arm64
 
 jobs:
   publish:
