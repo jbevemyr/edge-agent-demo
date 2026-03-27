@@ -9,7 +9,6 @@
 # Use a model that supports tool calling well enough for your hardware.
 
 name: edge-agent-demo-ollama
-version: "0.1.0"
 
 services:
   - name: app
@@ -17,27 +16,42 @@ services:
     replicas: 1
     containers:
       - name: app
-        image: "ghcr.io/jbevemyr/edge-agent-demo/app:v0.2.0"
+        image: ghcr.io/fredrik-jansson-se/edge-agent-demo/app:v0.1.0
+    network:
+      ingress-ip-per-instance:
+        protocols:
+          - name: tcp
+            port-ranges: "8001"
+      outbound-access:
+        allow-all: true
 
   - name: agent
     mode: replicated
     replicas: 1
+    variables:
+      - name: OPENAI_API_KEY
+        value-from-vault-secret:
+          vault: "edge-agent-demo-ollama"
+          secret: credentials
+          key: OPENAI_API_KEY 
     containers:
       - name: agent
-        image: "ghcr.io/jbevemyr/edge-agent-demo/agent:v0.2.0"
+        image: ghcr.io/fredrik-jansson-se/edge-agent-demo/agent:v0.1.0
         env:
           APP_URL: "http://app:8001"
           # Example: Ollama reachable as service name "ollama" on the same application network
-          LOCAL_LLM_BASE: "http://ollama:11434/v1"
-          LOCAL_MODEL: "llama3.2"
+          # LOCAL_LLM_BASE: "http://ollama.llm.applifer.jetson.prod.canaryislands.avassa.net:11434/v1"
+          LOCAL_LLM_BASE: http://llama.llama-server.applifer.jetson.prod.canaryislands.avassa.net:8080
+          # LOCAL_MODEL: qwen3:8b                 
+          LOCAL_MODEL: qwen3.5:4b
+          # LOCAL_MODEL: qwen3:4b                 
           LOCAL_LLM_API_KEY: "ollama"
           CLOUD_MODEL: "gpt-4o-mini"
-          # OPENAI_API_KEY: (optional, for ask_cloud_llm)
-        network:
-          ingress-ip-per-instance:
-            protocols:
-              - name: tcp
-                port-ranges: "8002"
-          # If Ollama is outside this application, allow outbound to its host:port
-          # outbound-access:
-          #   allow-all: true
+          OPENAI_API_KEY: ${OPENAI_API_KEY}
+    network:
+      ingress-ip-per-instance:
+        protocols:
+          - name: tcp
+            port-ranges: "8002"
+      outbound-access:
+        allow-all: true
