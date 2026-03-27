@@ -138,17 +138,29 @@ The **agent** ([`agent/main.py`](agent/main.py)) exposes **`POST /chat`** and a 
 
 The **`/chat`** response includes **`reply`** (assistant text) and **`audit`** (tool names and short previews) for demos.
 
-### Optional: OpenClaw as another client
+### OpenClaw, NemoClaw, and extending the demo
 
-[OpenClaw](https://github.com/openclaw/openclaw) is a separate, model-agnostic assistant framework (Node/TypeScript) that can connect LLMs to many channels and tools. It is **not** bundled or required by this repository.
+[OpenClaw](https://github.com/openclaw/openclaw) is a separate, model-agnostic assistant framework (Node/TypeScript) that connects LLMs to channels (chat apps, files, browser, shell, etc.) and custom tools. It is **not** bundled in this repository.
 
-Two practical ways to combine it with this demo:
+#### OpenClaw vs NemoClaw (NVIDIA)
 
-1. **Shared inference** - Point both **OpenClaw** and this demo’s **`agent`** at the **same** Ollama (or other OpenAI-compatible) endpoint on the site. You get different UIs/channels while reusing one local model. Plan for **load** if both are active.
+| | **OpenClaw** | **NemoClaw** ([NVIDIA/NemoClaw](https://github.com/NVIDIA/NemoClaw)) |
+|---|--------------|---------------------------------------------------------------------|
+| **Role** | Upstream open assistant/agent runtime you configure yourself. | NVIDIA’s packaging around OpenClaw-style agents with **governance**, **sandboxing (OpenShell)**, and ties to **NVIDIA AI** stacks (see [how it works](https://docs.nvidia.com/nemoclaw/latest/about/how-it-works.html)). |
+| **When to prefer it** | Fastest path to **HTTP tools**, many channels, minimal vendor coupling. | Demos where the story is **secure, governed agents** and **NVIDIA** on edge or enterprise. |
+| **Tradeoff** | You own **policy** (network, secrets, least privilege). | Stronger **control narrative**, but **heavier** prerequisites and a **newer** release track; follow NVIDIA docs for install. |
 
-2. **HTTP tool to this agent** - If your OpenClaw setup supports calling a custom **HTTP** action or similar, expose the demo **agent** on the network and **`POST /chat`** with JSON `{"message": "<natural language question>"}`. OpenClaw’s model can then delegate warehouse questions to this stack; tool orchestration for the warehouse API still runs **inside** the FastAPI agent ([`agent/main.py`](agent/main.py)).
+You can mention **both** in slide decks: OpenClaw for a simple “second client,” NemoClaw when alignment with **governed NVIDIA agents** matters.
 
-Example **`curl`** (replace host/port/ingress as on your site):
+#### Ways to combine OpenClaw with this stack
+
+1. **Shared inference** - Configure OpenClaw’s model backend to the **same** **Ollama** (or other OpenAI-compatible) URL as this demo’s **`agent`** (`LOCAL_LLM_BASE`). One GPU/model, multiple surfaces (OpenClaw channels vs this repo’s UI on port **8002**). Watch **concurrency** under load.
+
+2. **Warehouse bridge via this repo’s agent (recommended)** - Register a tool or automation in OpenClaw that performs **`POST /chat`** on the **agent** with body `{"message": "<user question>"}`. The **FastAPI agent** ([`agent/main.py`](agent/main.py)) keeps all **warehouse tool** calls and **`ask_cloud_llm`** logic; OpenClaw becomes an **orchestration / channel** layer.
+
+3. **Direct REST tools to the app (advanced)** - Optionally expose tools in OpenClaw that call **`GET /v1/...`** on the **app** only. Useful for **read-only** dashboards or strict paths. You **lose** the agent’s single place for prompts, cloud escalation, and **`audit`** unless you reimplement them in OpenClaw.
+
+Example **`curl`** against the agent (same contract OpenClaw’s HTTP action would use):
 
 ```bash
 curl -sS "http://<agent-host>:8002/chat" \
@@ -156,7 +168,32 @@ curl -sS "http://<agent-host>:8002/chat" \
   -d '{"message":"Summarize open critical events for WH-EU-01."}'
 ```
 
-**Security:** OpenClaw can integrate deeply with the host and messaging platforms. Follow its security guidance, restrict network access to the warehouse **app** and **agent**, and avoid duplicating two unrelated LLM “brains” on the same task without a clear split of roles.
+The JSON response includes **`reply`** and **`audit`**; an extended integration can parse **`audit`** in OpenClaw to drive notifications or logging.
+
+#### How to extend the demo with OpenClaw (practical steps)
+
+1. **Run the warehouse stack** - Deploy **app** + **agent** (and **local-llm** or **Ollama**) per this README so **`/chat`** and **`/v1/...`** work from your workstation or another container.
+
+2. **Install OpenClaw** - Follow the official OpenClaw install docs (e.g. [Docker install](https://docs.openclaw.ai/install/docker) or native Node). On **Avassa**, that usually means a **separate application** whose container image you build or pull per OpenClaw’s instructions, plus **volumes** for config/workspace if you need persistence.
+
+3. **Networking on the site** - From the OpenClaw process/container, ensure **outbound** (or same application network) access to:
+   - **`http://<agent>:8002`** for **`POST /chat`**, and  
+   - your **LLM endpoint** (e.g. **Ollama** `http://<ollama>:11434/v1`) if OpenClaw talks to the model directly.  
+   Align hostnames with [Avassa application networking](https://docs.avassa.io/how-to/applications-and-deployments/configuring-application-networks).
+
+4. **Configure the bridge** - In OpenClaw, add a **custom HTTP** (or equivalent) action/tool that:
+   - **POST**s to `http://<agent-service>:8002/chat`,
+   - sets **`Content-Type: application/json`**,  
+   - passes **`{"message": "<text from channel or template>"}`**.  
+   Map the **`reply`** field back to the user-facing channel.
+
+5. **Secrets** - Store **cloud API keys** (OpenClaw’s providers and/or **`OPENAI_API_KEY`** for this demo’s agent) in **Strongbox** or vault-backed env per Avassa, not in plain YAML.
+
+6. **Iterate** - Start with **one** tool (**POST /chat**). Add **direct app** tools only if you need fine-grained REST without the agent.
+
+**Application deployment** - Register the OpenClaw application separately (or alongside this demo), then create an **application deployment** with [site labels](https://docs.avassa.io/how-to/deploying-applications#placing-applications-based-on-labels) and optional [rolling](https://docs.avassa.io/how-to/deploying-applications#rolling-deployments) / [canary](https://docs.avassa.io/how-to/deploying-applications#canary-deployments) like [`avassa/deployment.example.yaml`](avassa/deployment.example.yaml). Exact probes and **ingress** ports depend on OpenClaw’s gateway UI (upstream docs often use a dedicated port for the local dashboard).
+
+**Security:** OpenClaw can reach deep into the host and third-party APIs. Use its security guides, **least privilege** outbound rules toward **app**/**agent**/Ollama only, and avoid two LLM stacks **both** planning the same warehouse workflow without a clear boundary (prefer **OpenClaw → agent → tools** as the default pattern).
 
 ## Demo script
 
