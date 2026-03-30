@@ -54,7 +54,6 @@
       border-radius: 8px;
       border: 1px solid var(--border);
       background: var(--panel);
-      white-space: pre-wrap;
       word-break: break-word;
       min-height: 3rem;
     }
@@ -70,7 +69,16 @@
       font-family: ui-monospace, monospace;
     }
     .err { color: #ff8a80; }
+    .out { white-space: normal; }
+    .out p { margin: 0 0 0.75rem; }
+    .out p:last-child { margin-bottom: 0; }
+    .out ul, .out ol { margin: 0 0 0.75rem; padding-left: 1.5rem; }
+    .out code { background: #0f1419; padding: 0.1em 0.3em; border-radius: 3px; font-family: ui-monospace, monospace; font-size: 0.9em; }
+    .out pre { background: #0f1419; padding: 0.75rem 1rem; border-radius: 6px; overflow-x: auto; margin: 0 0 0.75rem; }
+    .out pre code { background: none; padding: 0; }
   </style>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify/dist/purify.min.js"></script>
 </head>
 <body>
   <main>
@@ -105,7 +113,7 @@
           reply.innerHTML = '<span class="err">' + (data.detail || res.statusText) + "</span>";
           return;
         }
-        reply.textContent = data.reply || "";
+        reply.innerHTML = DOMPurify.sanitize(marked.parse(data.reply || ""));
         if (data.audit && data.audit.length) {
           auditEl.hidden = false;
           auditEl.textContent = JSON.stringify(data.audit, null, 2);
