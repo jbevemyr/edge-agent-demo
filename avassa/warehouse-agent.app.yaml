@@ -8,7 +8,7 @@
 # Pull a model on that Ollama instance before demoing, e.g. ollama pull llama3.2
 # Use a model that supports tool calling well enough for your hardware.
 
-name: edge-agent-demo-ollama
+name: warehouse-agent
 
 services:
   - name: app
@@ -16,7 +16,7 @@ services:
     replicas: 1
     containers:
       - name: app
-        image: ghcr.io/fredrik-jansson-se/edge-agent-demo/app:v0.1.0
+        image: ghcr.io/jbevemyr/edge-agent-demo/app:v0.3.0
     network:
       ingress-ip-per-instance:
         protocols:
@@ -36,14 +36,17 @@ services:
           key: OPENAI_API_KEY 
     containers:
       - name: agent
-        image: ghcr.io/fredrik-jansson-se/edge-agent-demo/agent:v0.1.0
+        image: ghcr.io/jbevemyr/edge-agent-demo/agent:v0.3.0
         env:
           APP_URL: "http://app:8001"
           # Example: Ollama reachable as service name "ollama" on the same application network
           # LOCAL_LLM_BASE: "http://ollama.llm.applifer.jetson.prod.canaryislands.avassa.net:11434/v1"
-          LOCAL_LLM_BASE: http://llama.llama-server.applifer.jetson.prod.canaryislands.avassa.net:8080
+          # LOCAL_LLM_BASE: http://llama.llama-server.applifer.jetson.prod.canaryislands.avassa.net:8080
+          LOCAL_LLM_BASE: ${SYS_SITE_LABELS[llm-api-base]}
           # LOCAL_MODEL: qwen3:8b                 
-          LOCAL_MODEL: qwen3.5:4b
+          # LOCAL_MODEL: qwen3.5:4b
+          # LOCAL_MODEL: qwen3.5:35B-A3B-FP8
+          LOCAL_MODEL: ${SYS_SITE_LABELS[llm-model]}
           # LOCAL_MODEL: qwen3:4b                 
           LOCAL_LLM_API_KEY: "ollama"
           CLOUD_MODEL: "gpt-4o-mini"
@@ -55,3 +58,5 @@ services:
             port-ranges: "8002"
       outbound-access:
         allow-all: true
+network:
+  shared-application-network: llm

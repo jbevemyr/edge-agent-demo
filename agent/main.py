@@ -3,6 +3,8 @@
 import json
 import logging
 import os
+import re
+import uuid
 from typing import Any
 
 import httpx
@@ -194,6 +196,61 @@ async def _http_post(path: str, json_body: dict[str, Any]) -> Any:
         return r.json()
 
 
+def _parse_text_tool_calls(content: str) -> list[dict[str, Any]]:
+    """Fallback: parse tool calls embedded as text when the model ignores structured output.
+
+    Handles the tag-based format some Qwen variants emit:
+        <tool_call>
+        <function=name>
+        <parameter=key>value</parameter>
+        </function>
+        </tool_call>
+    """
+    results = []
+    for block in re.finditer(r"<tool_call>(.*?)</tool_call>", content, re.DOTALL):
+        body = block.group(1).strip()
+        # Try JSON first (standard hermes format)
+        try:
+            data = json.loads(body)
+            if "name" in data:
+                results.append({
+                    "id": f"tc-{uuid.uuid4().hex[:8]}",
+                    "name": data["name"],
+                    "arguments": json.dumps(data.get("arguments", data.get("parameters", {}))),
+                })
+                continue
+        except json.JSONDecodeError:
+            pass
+        # Tag-based format: <function=name><parameter=key>value</parameter></function>
+        fn_match = re.search(r"<function=(\w+)>(.*?)</function>", body, re.DOTALL)
+        if not fn_match:
+            continue
+        fn_name = fn_match.group(1)
+        fn_body = fn_match.group(2)
+        args: dict[str, Any] = {}
+        for param in re.finditer(r"<parameter=(\w+)>(.*?)</parameter>", fn_body, re.DOTALL):
+            key = param.group(1)
+            raw = param.group(2).strip()
+            try:
+                args[key] = json.loads(raw)
+            except json.JSONDecodeError:
+                # Coerce common literals
+                if raw.lower() == "true":
+                    args[key] = True
+                elif raw.lower() == "false":
+                    args[key] = False
+                elif raw.lower() in ("none", "null"):
+                    args[key] = None
+                else:
+                    args[key] = raw
+        results.append({
+            "id": f"tc-{uuid.uuid4().hex[:8]}",
+            "name": fn_name,
+            "arguments": json.dumps(args),
+        })
+    return results
+
+
 async def execute_tool(name: str, arguments: str) -> str:
     try:
         args = json.loads(arguments) if arguments else {}
@@ -316,6 +373,25 @@ async def run_agent_turn(user_message: str) -> tuple[str, list[dict[str, Any]]]:
 
         choice = completion.choices[0]
         msg = choice.message
+
+        # Fallback: some models emit tool calls as text instead of structured tool_calls
+        if not getattr(msg, "tool_calls", None) and msg.content and "<tool_call>" in msg.content:
+            parsed = _parse_text_tool_calls(msg.content)
+            if parsed:
+                log.info("fallback_tool_parser extracted %d call(s) from text", len(parsed))
+
+                class _FakeFn:
+                    def __init__(self, name: str, arguments: str) -> None:
+                        self.name = name
+                        self.arguments = arguments
+
+                class _FakeTC:
+                    def __init__(self, d: dict[str, Any]) -> None:
+                        self.id = d["id"]
+                        self.function = _FakeFn(d["name"], d["arguments"])
+
+                msg.tool_calls = [_FakeTC(d) for d in parsed]  # type: ignore[assignment]
+
         if getattr(msg, "tool_calls", None):
             messages.append(
                 {
